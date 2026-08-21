@@ -14,9 +14,14 @@ def get_current_user(payload: dict = Depends(verify_token)) -> dict:
         raise HTTPException(status_code=401, detail="Invalid user")
     return user
 
-def require_role(roles: List[UserRoleEnum]) -> Callable:
+def require_role(roles: List[str]) -> Callable:
     def role_checker(current_user: dict = Depends(get_current_user)):
-        if current_user.get("role") not in [r.value for r in roles]:
+        # Handle both Enum and string inputs from routers
+        allowed_roles = [r.value if hasattr(r, 'value') else r for r in roles]
+        user_role = current_user.get("role")
+        user_role_val = user_role.value if hasattr(user_role, 'value') else user_role
+        
+        if user_role_val not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Operation not permitted"
