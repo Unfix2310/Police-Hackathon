@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: cctv-postgres
+    environment:
+      POSTGRES_DB: cctv_platform
+      POSTGRES_USER: cctv_user
+      POSTGRES_PASSWORD: cctv_pass_2026
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./gujarat-cctv-platform/data/seed:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cctv_user -d cctv_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: cctv-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./gujarat-cctv-platform/backend
+      dockerfile: Dockerfile
+    container_name: cctv-backend
+    env_file: ./gujarat-cctv-platform/.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./gujarat-cctv-platform/backend:/app
+      - ./gujarat-cctv-platform/data/recordings:/app/data/recordings
+      - ./gujarat-cctv-platform/data/models:/app/data/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./gujarat-cctv-platform/frontend
+      dockerfile: Dockerfile
+    container_name: cctv-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
