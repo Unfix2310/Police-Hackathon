@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Video, ExternalLink, Copy, Check, MapPin } from 'lucide-react';
+import { Video, ExternalLink, Copy, Check } from 'lucide-react';
 
 export default function CameraCard({ camera }) {
   const videoRef = useRef(null);
@@ -103,14 +103,7 @@ export default function CameraCard({ camera }) {
         </div>
 
         {/* Hover action bar */}
-        <div className="absolute bottom-0 left-0 right-0 p-2.5 bg-gradient-to-t from-black/95 via-black/75 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-between text-xs text-white">
-          <span className="text-slate-200 text-[11px] font-medium truncate max-w-[62%] flex items-center gap-1.5" title={`${camera.location || camera.display_name} (${camera.district || 'Gujarat'})`}>
-            <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="truncate">
-              {camera.location || camera.display_name || 'Gujarat Police Grid'}
-              {camera.district ? ` • ${camera.district}` : ''}
-            </span>
-          </span>
+        <div className="absolute bottom-0 left-0 right-0 p-2.5 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end text-xs text-white">
           <div className="flex items-center gap-1.5">
             <button
               onClick={copyRtsp}
