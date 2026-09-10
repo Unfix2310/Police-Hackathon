@@ -3,9 +3,25 @@ import { Video, ExternalLink, Copy, Check } from 'lucide-react';
 
 export default function CameraCard({ camera }) {
   const videoRef = useRef(null);
+  const cardRef = useRef(null);
   const [copied, setCopied] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const streamUrl = camera.hls_url || camera.web_url;
+
+  useEffect(() => {
+    const handleFocusCamera = (e) => {
+      if (e.detail?.camId === camera.cam_id) {
+        setIsFocused(true);
+        if (cardRef.current) {
+          cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        setTimeout(() => setIsFocused(false), 3000);
+      }
+    };
+    window.addEventListener('focus-camera', handleFocusCamera);
+    return () => window.removeEventListener('focus-camera', handleFocusCamera);
+  }, [camera.cam_id]);
 
   useEffect(() => {
     let hlsInstance = null;
@@ -64,7 +80,13 @@ export default function CameraCard({ camera }) {
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-lg aspect-video flex flex-col relative overflow-hidden group shadow-lg">
+    <div
+      ref={cardRef}
+      id={`camera-card-${camera.cam_id}`}
+      className={`bg-slate-900 border rounded-lg aspect-video flex flex-col relative overflow-hidden group shadow-lg transition-all duration-300 ${
+        isFocused ? 'ring-4 ring-blue-500 border-blue-400 scale-[1.02]' : 'border-slate-800'
+      }`}
+    >
       <div className="flex-1 w-full h-full bg-black relative flex items-center justify-center">
         {streamUrl && !hasError ? (
           <video
