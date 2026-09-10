@@ -18,9 +18,8 @@ export default function Header() {
         <span className="font-semibold text-gray-700 capitalize">{user?.role} Mode</span>
       </div>
       <div className="flex items-center gap-6">
-        <button className="text-gray-500 hover:text-police-blue relative">
+        <button className="text-gray-500 hover:text-police-blue relative" title="System Notifications">
           <Bell size={20} />
-          <span className="absolute -top-1 -right-1 bg-saffron text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">3</span>
         </button>
         <div className="flex items-center gap-2 text-sm text-gray-700 border-l pl-6 border-gray-200">
           <User size={16} />
