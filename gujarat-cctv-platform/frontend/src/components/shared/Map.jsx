@@ -1,35 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import CameraMarker from './CameraMarker';
 import { SENTINEL_FALLBACK_CAMS } from '../operator/sentinel_cams';
 import api from '../../services/api';
 import { useAlerts } from '../../hooks/useAlerts';
-import { Compass, Eye, Shield } from 'lucide-react';
+import { Loader2, ChevronDown } from 'lucide-react';
 
-function MapController({ center, zoom }) {
+function MapController({ viewTarget }) {
   const map = useMap();
   useEffect(() => {
-    if (center && zoom) {
-      map.flyTo(center, zoom, { duration: 1.0 });
+    if (!viewTarget) return;
+    if (viewTarget.bounds) {
+      map.fitBounds(viewTarget.bounds, { padding: [40, 40], maxZoom: 13, animate: true, duration: 1.0 });
+    } else if (viewTarget.center && viewTarget.zoom) {
+      map.flyTo(viewTarget.center, viewTarget.zoom, { duration: 1.0 });
     }
-  }, [center, zoom, map]);
+  }, [viewTarget, map]);
   return null;
 }
 
 export default function Map({ cameras: propCameras, onSelectCamera }) {
   const [cameras, setCameras] = useState(propCameras || []);
-  const [viewPreset, setViewPreset] = useState({ center: [23.045, 72.565], zoom: 12, name: 'ahmedabad' });
+  const [loading, setLoading] = useState(!propCameras || propCameras.length === 0);
+  const [selectedDistrict, setSelectedDistrict] = useState('ALL');
+  const [viewTarget, setViewTarget] = useState({ center: [23.045, 72.565], zoom: 12 });
   const { alerts } = useAlerts ? useAlerts() : { alerts: [] };
 
   useEffect(() => {
     if (propCameras && propCameras.length > 0) {
       setCameras(propCameras);
+      setLoading(false);
       return;
     }
 
     const loadCams = async () => {
+      setLoading(true);
       try {
-        const res = await api.get('/cameras?limit=50');
+        const res = await api.get('/cameras?limit=100');
         if (res.data?.cameras && res.data.cameras.length > 0) {
           setCameras(res.data.cameras);
         } else {
@@ -37,10 +44,60 @@ export default function Map({ cameras: propCameras, onSelectCamera }) {
         }
       } catch {
         setCameras(SENTINEL_FALLBACK_CAMS);
+      } finally {
+        setLoading(false);
       }
     };
     loadCams();
   }, [propCameras]);
+
+  // Dynamically compute unique districts and camera count per district from live camera data
+  const districtCounts = useMemo(() => {
+    const mapCounts = {};
+    cameras.forEach((cam) => {
+      const dist = cam.district || 'Ahmedabad';
+      mapCounts[dist] = (mapCounts[dist] || 0) + 1;
+    });
+    return Object.entries(mapCounts).sort(([a], [b]) => a.localeCompare(b));
+  }, [cameras]);
+
+  // Filtered cameras based on dropdown selection
+  const displayedCameras = useMemo(() => {
+    if (selectedDistrict === 'ALL') return cameras;
+    return cameras.filter(
+      (c) => (c.district || '').toLowerCase() === selectedDistrict.toLowerCase()
+    );
+  }, [cameras, selectedDistrict]);
+
+  const handleDistrictChange = (district) => {
+    setSelectedDistrict(district);
+    if (district === 'ALL') {
+      setViewTarget({ center: [22.4, 71.5], zoom: 7.5 });
+      return;
+    }
+
+    const distCams = cameras.filter(
+      (c) => (c.district || '').toLowerCase() === district.toLowerCase()
+    );
+
+    if (distCams.length === 0) return;
+
+    const lats = distCams.map((c) => c.lat || c.latitude).filter(Boolean);
+    const lngs = distCams.map((c) => c.lng || c.longitude).filter(Boolean);
+
+    if (lats.length === 0 || lngs.length === 0) return;
+
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+
+    if (minLat === maxLat && minLng === maxLng) {
+      setViewTarget({ center: [minLat, minLng], zoom: 13 });
+    } else {
+      setViewTarget({ bounds: [[minLat, minLng], [maxLat, maxLng]] });
+    }
+  };
 
   // Set of camera IDs that currently have active alerts
   const alertCamIds = new Set(
@@ -50,38 +107,50 @@ export default function Map({ cameras: propCameras, onSelectCamera }) {
   return (
     <div className="relative h-full w-full rounded-md border border-slate-200 overflow-hidden shadow-inner">
       {/* Top Map Action Toolbar */}
-      <div className="absolute top-3 right-3 z-[400] flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-md px-2.5 py-1.5 rounded-lg border border-slate-700/60 shadow-lg text-xs">
-        <span className="flex items-center gap-1 text-emerald-400 font-semibold mr-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          {cameras.length} Cams
+      <div className="absolute top-3 right-3 z-[400] flex items-center gap-2 bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-700/60 shadow-lg text-xs">
+        {/* Dynamic Cam Counter with Loading indicator */}
+        <span className="flex items-center gap-1.5 text-emerald-400 font-semibold mr-1">
+          {loading ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+              <span className="text-slate-300">Loading Feeds...</span>
+            </>
+          ) : (
+            <>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>
+                {displayedCameras.length} {displayedCameras.length === 1 ? 'Cam' : 'Cams'}
+                {selectedDistrict !== 'ALL' && ` in ${selectedDistrict}`}
+              </span>
+            </>
+          )}
         </span>
 
-        <button
-          onClick={() => setViewPreset({ center: [23.045, 72.565], zoom: 12, name: 'ahmedabad' })}
-          className={`px-2 py-1 rounded font-medium transition-all ${
-            viewPreset.name === 'ahmedabad'
-              ? 'bg-blue-600 text-white shadow'
-              : 'text-slate-300 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          Ahmedabad
-        </button>
-
-        <button
-          onClick={() => setViewPreset({ center: [22.4, 71.5], zoom: 7.5, name: 'gujarat' })}
-          className={`px-2 py-1 rounded font-medium transition-all ${
-            viewPreset.name === 'gujarat'
-              ? 'bg-blue-600 text-white shadow'
-              : 'text-slate-300 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          Gujarat State
-        </button>
+        {/* Dynamic District Dropdown */}
+        <div className="relative flex items-center">
+          <select
+            value={selectedDistrict}
+            onChange={(e) => handleDistrictChange(e.target.value)}
+            disabled={loading}
+            aria-label="Select Gujarat District"
+            className="bg-slate-800 hover:bg-slate-750 text-white font-medium pl-2.5 pr-7 py-1 rounded border border-slate-600 text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer appearance-none disabled:opacity-50"
+          >
+            <option value="ALL">
+              All Gujarat ({cameras.length})
+            </option>
+            {districtCounts.map(([dist, count]) => (
+              <option key={dist} value={dist}>
+                {dist} ({count})
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 pointer-events-none" />
+        </div>
       </div>
 
       <MapContainer
-        center={viewPreset.center}
-        zoom={viewPreset.zoom}
+        center={viewTarget.center || [23.045, 72.565]}
+        zoom={viewTarget.zoom || 12}
         className="h-full w-full"
         zoomControl={false}
       >
@@ -90,9 +159,9 @@ export default function Map({ cameras: propCameras, onSelectCamera }) {
           attribution='&copy; OpenStreetMap contributors | Gujarat Police CCTV'
         />
 
-        <MapController center={viewPreset.center} zoom={viewPreset.zoom} />
+        <MapController viewTarget={viewTarget} />
 
-        {cameras.map((cam) => (
+        {displayedCameras.map((cam) => (
           <CameraMarker
             key={cam.cam_id}
             camera={cam}
