@@ -54,12 +54,14 @@ async def _get_sentinel_client() -> httpx.AsyncClient:
 
 def _serialize_cam(c: Camera) -> dict:
     stream_path = f"/api/v1/cameras/{c.cam_id}/stream/index.m3u8"
+    loc = getattr(c, "location", None) or c.police_station or c.display_name
     return {
         "cam_id": c.cam_id,
         "display_name": c.display_name,
+        "location": loc,
         "location_type": c.location_type or "Junction",
         "district": c.district or "Ahmedabad",
-        "police_station": c.police_station or "Unknown",
+        "police_station": c.police_station or loc or "Unknown",
         "status": getattr(c.status, "value", str(c.status)),
         "rtsp_url": c.rtsp_url or settings.get_rtsp_url(c.cam_id),
         "hls_url": stream_path,
