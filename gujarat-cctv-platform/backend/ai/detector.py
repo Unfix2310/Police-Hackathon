@@ -4,7 +4,12 @@ import numpy as np
 import torch
 from pydantic import BaseModel
 
+import threading
+
 logger = logging.getLogger(__name__)
+
+_SHARED_YOLO = None
+_LOAD_LOCK = threading.Lock()
 
 class Detection(BaseModel):
     bbox: List[int] # [x1, y1, x2, y2]
@@ -15,8 +20,12 @@ class ObjectDetector:
     def __init__(self, model_name: str = "yolov8m.pt", conf_threshold: float = 0.5):
         self.model_name = model_name
         self.conf_threshold = conf_threshold
-        self.model = None
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if torch.cuda.is_available():
+            self.device = 'cuda'
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            self.device = 'mps'
+        else:
+            self.device = 'cpu'
         
         # COCO mapping for our targets
         self.target_classes = {
@@ -27,25 +36,26 @@ class ObjectDetector:
             7: 7  # truck
         }
         
-    def _load_model(self):
-        if self.model is None:
-            logger.info(f"Loading YOLO model {self.model_name} on {self.device}...")
-            try:
-                from ultralytics import YOLO
-                self.model = YOLO(self.model_name)
-                if self.device == 'cuda':
-                    self.model.to(self.device)
-            except Exception as e:
-                logger.error(f"Failed to load YOLO model: {e}")
-                raise
+    def _get_model(self):
+        global _SHARED_YOLO
+        if _SHARED_YOLO is None:
+            with _LOAD_LOCK:
+                if _SHARED_YOLO is None:
+                    logger.info(f"Loading shared YOLO model {self.model_name} on {self.device}...")
+                    from ultralytics import YOLO
+                    model = YOLO(self.model_name)
+                    if self.device != 'cpu':
+                        model.to(self.device)
+                    _SHARED_YOLO = model
+        return _SHARED_YOLO
                 
     def detect(self, frame: np.ndarray) -> List[Detection]:
-        self._load_model()
+        model = self._get_model()
         
         if frame is None or frame.size == 0:
             return []
             
-        results = self.model.predict(
+        results = model.predict(
             source=frame,
             conf=self.conf_threshold,
             device=self.device,

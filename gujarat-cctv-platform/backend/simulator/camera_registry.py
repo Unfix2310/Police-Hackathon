@@ -14,7 +14,9 @@ if os.path.exists(json_path):
     CAMERAS = []
     for c in raw_cams:
         loc = c.get("location", "")
-        district = "Junagadh" if "junagadh" in loc.lower() else ("Gir Somnath" if "somnath" in loc.lower() else ("Navsari" if "navsari" in loc.lower() else ("Rajkot" if "rajkot" in loc.lower() else "Ahmedabad")))
+        district = c.get("district") or ("Junagadh" if "junagadh" in loc.lower() else ("Gir Somnath" if "somnath" in loc.lower() else ("Navsari" if "navsari" in loc.lower() else ("Rajkot" if "rajkot" in loc.lower() else "Ahmedabad"))))
+        police_station = c.get("police_station") or loc
+        loc_type = c.get("location_type") or ("Junction" if "rasta" in loc.lower() or "circle" in loc.lower() or "gate" in loc.lower() else "Bridge/Road")
         stream_path = f"/api/v1/cameras/{c['cam_id']}/stream/index.m3u8"
         CAMERAS.append({
             "cam_id": c["cam_id"],
@@ -24,10 +26,12 @@ if os.path.exists(json_path):
             "hls_url": stream_path,
             "webrtc_url": c.get("webrtc_url") or settings.get_webrtc_url(c["cam_id"]),
             "web_url": stream_path,
-            "police_station": loc,
+            "latitude": c.get("latitude") or c.get("lat"),
+            "longitude": c.get("longitude") or c.get("lng"),
+            "police_station": police_station,
             "district": district,
-            "location_type": "Junction" if "rasta" in loc.lower() or "circle" in loc.lower() or "gate" in loc.lower() else "Bridge/Road",
-            "jurisdiction_code": f"GJ-{district[:3].upper()}"
+            "location_type": loc_type,
+            "jurisdiction_code": c.get("jurisdiction_code") or f"GJ-{district[:3].upper()}"
         })
 else:
     CAMERAS = []
@@ -64,22 +68,26 @@ async def fetch_sentinel_catalogue() -> List[Dict]:
                     logger.info(f"Successfully fetched {len(catalogue)} cameras from Sentinel catalogue.")
                     cams = []
                     for idx, item in enumerate(catalogue, 1):
-                        cam_id = item.get("id")
-                        name = item.get("name", cam_id)
-                        district = "Junagadh" if "junagadh" in name.lower() else ("Gir Somnath" if "somnath" in name.lower() else ("Navsari" if "navsari" in name.lower() else ("Rajkot" if "rajkot" in name.lower() else "Ahmedabad")))
+                        cam_id = item.get("id") or item.get("cam_id")
+                        name = item.get("name") or item.get("location") or cam_id
+                        district = item.get("district") or ("Junagadh" if "junagadh" in name.lower() else ("Gir Somnath" if "somnath" in name.lower() else ("Navsari" if "navsari" in name.lower() else ("Rajkot" if "rajkot" in name.lower() else "Ahmedabad"))))
+                        police_station = item.get("police_station") or name
+                        loc_type = item.get("location_type") or ("Junction" if "rasta" in name.lower() or "circle" in name.lower() or "gate" in name.lower() else "Bridge/Road")
                         stream_path = f"/api/v1/cameras/{cam_id}/stream/index.m3u8"
                         cams.append({
                             "cam_id": cam_id,
-                            "display_name": f"Camera {idx:02d} - {name}",
+                            "display_name": item.get("display_name") or f"Camera {idx:02d} - {name}",
                             "location": name,
                             "rtsp_url": settings.get_rtsp_url(cam_id),
                             "hls_url": stream_path,
                             "webrtc_url": settings.get_webrtc_url(cam_id),
                             "web_url": stream_path,
-                            "police_station": name,
+                            "latitude": item.get("latitude") or item.get("lat"),
+                            "longitude": item.get("longitude") or item.get("lng"),
+                            "police_station": police_station,
                             "district": district,
-                            "location_type": "Junction" if "rasta" in name.lower() or "circle" in name.lower() or "gate" in name.lower() else "Bridge/Road",
-                            "jurisdiction_code": f"GJ-{district[:3].upper()}"
+                            "location_type": loc_type,
+                            "jurisdiction_code": item.get("jurisdiction_code") or f"GJ-{district[:3].upper()}"
                         })
                     return cams
     except Exception as e:

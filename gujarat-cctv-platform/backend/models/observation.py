@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, ARRAY
-from sqlalchemy.dialects.postgresql import UUID, JSONB, BIGINT
+from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, JSON
+from sqlalchemy import JSON, BigInteger as BIGINT, String
 from datetime import datetime
 from typing import Optional, Any
 from database import Base
@@ -9,7 +9,7 @@ from .enums import ObservationType
 class Observation(Base):
     __tablename__ = "observations"
 
-    observation_id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    observation_id: Mapped[str] = mapped_column(String, primary_key=True)
     timestamp_capture: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     
     observation_type: Mapped[ObservationType] = mapped_column()
@@ -18,10 +18,10 @@ class Observation(Base):
     source_edge_id: Mapped[Optional[str]] = mapped_column(String(100))
     timestamp_process: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     
-    bounding_box: Mapped[Optional[list[int]]] = mapped_column(ARRAY(Integer))
+    bounding_box: Mapped[Optional[list[int]]] = mapped_column(JSON)
     track_id: Mapped[Optional[str]] = mapped_column(String(100))
     confidence: Mapped[Optional[float]] = mapped_column(Float)
-    payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB)
+    payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     
     feature_vector_ref: Mapped[Optional[str]] = mapped_column(String)
     frame_ref: Mapped[Optional[str]] = mapped_column(String)

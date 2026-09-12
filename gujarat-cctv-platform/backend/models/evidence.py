@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import String, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String
 from datetime import datetime, timezone
 from typing import Optional
 from database import Base
@@ -20,5 +20,5 @@ class EvidenceObservation(Base):
     __tablename__ = "evidence_observations"
 
     package_id: Mapped[str] = mapped_column(ForeignKey("evidence_packages.package_id", ondelete="CASCADE"), primary_key=True)
-    observation_id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    observation_id: Mapped[str] = mapped_column(String, primary_key=True)
     timestamp_capture: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)

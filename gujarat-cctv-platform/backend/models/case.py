@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, DateTime, Date, ForeignKey, ARRAY
+from sqlalchemy import String, DateTime, Date, ForeignKey, JSON
 from datetime import datetime, date, timezone
 from typing import Optional
 from database import Base
@@ -20,7 +20,7 @@ class Case(Base):
     status: Mapped[CaseStatus] = mapped_column(default=CaseStatus.OPEN)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    access_list: Mapped[Optional[list[str]]] = mapped_column(ARRAY(String))
+    access_list: Mapped[Optional[list[str]]] = mapped_column(JSON)
     access_justification: Mapped[Optional[str]] = mapped_column(String)
     classification: Mapped[Optional[str]] = mapped_column(String(50))
 

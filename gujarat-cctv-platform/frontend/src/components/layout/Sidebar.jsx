@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { MonitorPlay, Search, Activity, ShieldAlert } from 'lucide-react';
+import { MonitorPlay, Search, Activity, ShieldAlert, ScanLine } from 'lucide-react';
 
 export default function Sidebar() {
   const { user } = useAuth();
@@ -12,6 +12,7 @@ export default function Sidebar() {
     { to: '/investigator', icon: <Activity />, label: 'Investigator', roles: ['investigator', 'admin'] },
     { to: '/investigator/search', icon: <Search />, label: 'Advanced Search', roles: ['investigator', 'admin'] },
     { to: '/command', icon: <ShieldAlert />, label: 'Command Dashboard', roles: ['command', 'admin'] },
+    { to: '/anpr-test', icon: <ScanLine />, label: 'ANPR Test Lab', roles: ['operator', 'investigator', 'command', 'admin'] },
   ];
 
   return (

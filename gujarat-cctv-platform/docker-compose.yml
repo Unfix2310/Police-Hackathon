@@ -12,7 +12,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./gujarat-cctv-platform/data/seed:/docker-entrypoint-initdb.d
+      - ./data/seed:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cctv_user -d cctv_platform"]
       interval: 10s
@@ -36,16 +36,16 @@ services:
 
   backend:
     build:
-      context: ./gujarat-cctv-platform/backend
+      context: ./backend
       dockerfile: Dockerfile
     container_name: cctv-backend
-    env_file: ./gujarat-cctv-platform/.env
+    env_file: ./.env
     ports:
       - "8000:8000"
     volumes:
-      - ./gujarat-cctv-platform/backend:/app
-      - ./gujarat-cctv-platform/data/recordings:/app/data/recordings
-      - ./gujarat-cctv-platform/data/models:/app/data/models
+      - ./backend:/app
+      - ./data/recordings:/app/data/recordings
+      - ./data/models:/app/data/models
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,11 +55,11 @@ services:
 
   frontend:
     build:
-      context: ./gujarat-cctv-platform/frontend
+      context: ./frontend
       dockerfile: Dockerfile
     container_name: cctv-frontend
     ports:
-      - "3000:80"
+      - "3001:80"
     depends_on:
       - backend
     restart: unless-stopped

@@ -2,6 +2,14 @@
 
 ## Master Implementation, Architecture & Deployment Plan
 
+# Gujarat Police Hackathon: CCTV Intelligence Platform — Implementation Plan v3
+
+> [!NOTE]
+> **Superseded for MVP scope.** Graph technology decision for the hackathon
+> MVP has been updated — see `docs/v4.1_decisions.md` §5. This document's
+> Neo4j specification (§28, §38) remains the target for statewide
+> production scale and is not currently implemented.
+
 ### Government of Gujarat
 
 ---
@@ -1672,6 +1680,7 @@ Reference: [Evidence package ID]
 | Evidence clips & packages | **Object storage** | MinIO (evidence bucket, immutable) | Legal retention |
 | Observation metadata | **PostgreSQL** | PostgreSQL (time-partitioned) | Authoritative observation records |
 | Search index | **OpenSearch** | OpenSearch 2.x | Derived from PostgreSQL via CDC; not authoritative |
+<!-- Superseded for MVP — see docs/v4.1_decisions.md §5 -->
 | Investigation relationships | **Graph DB** | Neo4j Enterprise (clustered) | Authoritative relationship data |
 | Embedding / feature vectors | **Vector DB** | Milvus or Qdrant | Authoritative feature store |
 | Real-time state & cache | **Redis** | Redis 7.x cluster | Ephemeral; reconstructable from authoritative stores |
@@ -1686,6 +1695,7 @@ Reference: [Evidence package ID]
 PostgreSQL (authoritative observations)
         │
         ├──► OpenSearch (CDC via Debezium/Kafka Connect) → search index
+        <!-- Superseded for MVP — see docs/v4.1_decisions.md §5 -->
         ├──► Neo4j (event-driven via Kafka) → graph relationships
         ├──► Redis (event-driven) → real-time cache
         └──► Data lake (batch ETL) → historical analytics
@@ -1707,6 +1717,7 @@ Vector DB (authoritative features)
 | Object storage (frames/crops) | 50 TB | 500 TB | 1.5 PB | Key frames + entity crops |
 | PostgreSQL | 500 GB | 2 TB | 6 TB | Time-partitioned, archived monthly |
 | OpenSearch | 200 GB | 1 TB | 3 TB | Derived, can be rebuilt |
+<!-- Superseded for MVP — see docs/v4.1_decisions.md §5 -->
 | Neo4j | 100 GB | 500 GB | 1.5 TB | Graph grows with entities/relationships |
 | Vector DB | 50 GB | 200 GB | 600 GB | ~100M vectors at scale |
 | Redis | 32 GB | 64 GB | 128 GB | Ephemeral, bounded |
@@ -2197,6 +2208,7 @@ STATE DATA CENTER
   PostgreSQL: Primary + 2 synchronous replicas (auto-failover via Patroni)
   Kafka: 5-broker cluster, survive 2 failures
   Redis: 6-node cluster, survive 2 failures
+  <!-- Superseded for MVP — see docs/v4.1_decisions.md §5 -->
   Neo4j: 3-core causal cluster
   API servers: N+2 redundancy behind load balancer
   GPU cluster: N+1 redundancy

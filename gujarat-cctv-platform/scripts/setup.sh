@@ -12,11 +12,11 @@ echo "✓ Docker found"
 
 # Create required directories
 echo "Creating directories..."
-mkdir -p gujarat-cctv-platform/data/{recordings,models,frames,seed,maps}
+mkdir -p data/{recordings,models,frames,seed,maps}
 
 # Copy env if not exists
-if [ ! -f gujarat-cctv-platform/.env ]; then
-    cp gujarat-cctv-platform/.env.example gujarat-cctv-platform/.env
+if [ ! -f .env ]; then
+    cp .env.example .env
     echo "✓ Created .env from .env.example"
 else
     echo "✓ .env already exists"
@@ -25,10 +25,10 @@ fi
 # Download AI models (YOLOv8)
 echo ""
 echo "Downloading AI models..."
-if [ ! -f gujarat-cctv-platform/data/models/yolov8m.pt ]; then
-    pip install ultralytics -q 2>/dev/null || true
+if [ ! -f data/models/yolov8m.pt ]; then
+    pip3 install ultralytics -q 2>/dev/null || true
     python3 -c "from ultralytics import YOLO; YOLO('yolov8m.pt')" 2>/dev/null && \
-    mv yolov8m.pt gujarat-cctv-platform/data/models/ 2>/dev/null || \
+    mv yolov8m.pt data/models/ 2>/dev/null || \
     echo "⚠ YOLOv8 model download skipped (will download on first run)"
 else
     echo "✓ YOLOv8 model already exists"

@@ -1,0 +1,32 @@
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+cookies.txt
+*.pem
+*.key
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Python & AI Models
+__pycache__/
+*.py[cod]
+*$py.class
+*.pt
+*.onnx
+*.engine
+venv/
+.venv/
+
+# Node & Frontend
+node_modules/
+dist/
+build/
+
+# OS & IDE
+.DS_Store
+.vscode/
+.idea/

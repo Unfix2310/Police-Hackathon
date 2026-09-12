@@ -7,9 +7,15 @@
 ---
 
 ## 🔖 Last Updated
-- **Date**: 2026-08-21T13:05:00+05:30
-- **State**: PHASE 2 — CODE BUILD ✅ COMPLETE (125 files, committed to git)
-- **Next Action**: PHASE 3 — Test, verify imports, fix integration issues, demo validation
+- **Date**: 2026-09-03T10:15:00+05:30
+- **State**: PHASE 2 ✅ COMPLETE + v4.1 Dynamic Entity Layer ✅ IMPLEMENTED
+- **Next Action**: PHASE 3 — End-to-end test with 50 recordings, demo script validation
+
+> [!IMPORTANT]
+> The architecture baseline is now **v4.1** (not v3.0). The v3.0 plan in
+> `docs/implementation_planv3.md` is **superseded** for the dynamic entity layer.
+> See `docs/v4.1_decisions.md` for the canonical decision log.
+> All new engine code should reference v4.1 section numbers in docstrings.
 
 ---
 

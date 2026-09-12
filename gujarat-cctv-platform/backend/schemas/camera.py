@@ -25,7 +25,8 @@ class CameraBase(BaseModel):
     model: str
     firmware_version: str
     protocol: str
-    stream_url: str
+    rtsp_url: str
+    web_url: str
     vms_system: Optional[str] = None
     vms_camera_ref: Optional[str] = None
     latitude: float = Field(..., ge=-90, le=90)

@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Integer, Float, Date, DateTime, ARRAY, Boolean, ForeignKey
+from sqlalchemy import String, Integer, Float, Date, DateTime, JSON, Boolean, ForeignKey
 from datetime import datetime, date
 from typing import Optional, List
 from database import Base
@@ -18,13 +18,16 @@ class Camera(Base):
     model: Mapped[Optional[str]] = mapped_column(String(100))
     firmware_version: Mapped[Optional[str]] = mapped_column(String(50))
     protocol: Mapped[Optional[str]] = mapped_column(String(50))
-    stream_url: Mapped[Optional[str]] = mapped_column(String)
+    rtsp_url: Mapped[Optional[str]] = mapped_column(String)
+    web_url: Mapped[Optional[str]] = mapped_column(String)
     vms_system: Mapped[Optional[str]] = mapped_column(String(100))
     vms_camera_ref: Mapped[Optional[str]] = mapped_column(String(100))
     
     # We omit PostGIS geometry for standard ORM usage if not using GeoAlchemy2,
     # or handle it as raw text/WKT. Using generic string/float for simplicity here.
     altitude_m: Mapped[Optional[float]] = mapped_column(Float)
+    latitude: Mapped[Optional[float]] = mapped_column(Float)
+    longitude: Mapped[Optional[float]] = mapped_column(Float)
     direction_deg: Mapped[Optional[int]] = mapped_column(Integer)
     fov_h_deg: Mapped[Optional[int]] = mapped_column(Integer)
     mount_height_m: Mapped[Optional[float]] = mapped_column(Float)

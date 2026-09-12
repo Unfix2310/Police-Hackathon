@@ -1,9 +1,7 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
-from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from auth.rbac import require_role
-from models.user import User
 
 router = APIRouter(prefix="/evidence", tags=["Evidence"])
 
@@ -11,16 +9,24 @@ router = APIRouter(prefix="/evidence", tags=["Evidence"])
 async def generate_evidence(
     payload: dict,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_role(["investigator"]))
+    user: dict = Depends(require_role(["investigator"]))
 ):
     """Generate verifiable Sec 65B evidence package."""
-    return {"job_id": "ev_gen_888"}
+    raise HTTPException(
+        status_code=501,
+        detail="Evidence package generation is not yet implemented. "
+               "Real SHA-256 manifest and Section 65B certification "
+               "requires validated chain-of-custody implementation."
+    )
 
 @router.get("/{evidence_id}")
 async def get_evidence(
     evidence_id: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_role(["investigator"]))
+    user: dict = Depends(require_role(["investigator"]))
 ):
-    """Get completed evidence package metadata and download link."""
-    return {"id": evidence_id, "status": "ready", "hash_sha256": "abc123def", "download_url": f"https://storage/{evidence_id}.zip"}
+    """Get completed evidence package metadata."""
+    raise HTTPException(
+        status_code=501,
+        detail="Evidence retrieval is not yet implemented."
+    )

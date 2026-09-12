@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Video, ExternalLink, Copy, Check } from 'lucide-react';
+import Hls from 'hls.js';
 
 export default function CameraCard({ camera }) {
   const videoRef = useRef(null);
@@ -33,35 +34,20 @@ export default function CameraCard({ camera }) {
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = streamUrl;
       video.play().catch(() => {});
-    } else {
-      // Dynamic Hls.js loader for Chrome/Firefox/Edge
-      const initHls = () => {
-        if (window.Hls && window.Hls.isSupported()) {
-          hlsInstance = new window.Hls({
-            enableWorker: true,
-            lowLatencyMode: true,
-            backBufferLength: 30,
-          });
-          hlsInstance.loadSource(streamUrl);
-          hlsInstance.attachMedia(video);
-          hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, () => {
-            video.play().catch(() => {});
-          });
-          hlsInstance.on(window.Hls.Events.ERROR, () => {
-            // Non-fatal or CDN session limitation
-          });
-        }
-      };
-
-      if (window.Hls) {
-        initHls();
-      } else {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
-        script.async = true;
-        script.onload = initHls;
-        document.head.appendChild(script);
-      }
+    } else if (Hls && Hls.isSupported()) {
+      hlsInstance = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        backBufferLength: 30,
+      });
+      hlsInstance.loadSource(streamUrl);
+      hlsInstance.attachMedia(video);
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => {});
+      });
+      hlsInstance.on(Hls.Events.ERROR, () => {
+        // Non-fatal or CDN session limitation
+      });
     }
 
     return () => {
@@ -71,9 +57,10 @@ export default function CameraCard({ camera }) {
     };
   }, [streamUrl]);
 
-  const copyRtsp = () => {
-    if (camera.rtsp_url) {
-      navigator.clipboard.writeText(camera.rtsp_url);
+  const copyCamId = () => {
+    const textToCopy = camera.cam_id || streamUrl || '';
+    if (textToCopy) {
+      navigator.clipboard.writeText(textToCopy);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -128,12 +115,12 @@ export default function CameraCard({ camera }) {
         <div className="absolute bottom-0 left-0 right-0 p-2.5 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end text-xs text-white">
           <div className="flex items-center gap-1.5">
             <button
-              onClick={copyRtsp}
-              title="Copy RTSP inference endpoint (TCP)"
+              onClick={copyCamId}
+              title="Copy Camera ID"
               className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-600/50 flex items-center gap-1 text-[11px]"
             >
               {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-              <span>{copied ? 'Copied' : 'RTSP'}</span>
+              <span>{copied ? 'Copied' : 'ID'}</span>
             </button>
             {camera.hls_url && (
               <a

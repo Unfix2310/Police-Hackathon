@@ -7,6 +7,7 @@ import InvestigatorWorkspace from './pages/InvestigatorWorkspace';
 import SearchView from './pages/SearchView';
 import TrajectoryView from './pages/TrajectoryView';
 import CommandDashboard from './pages/CommandDashboard';
+import AnprTestLab from './pages/AnprTestLab';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -35,6 +36,16 @@ function AppRoutes() {
           <SearchView />
         </ProtectedRoute>
       } />
+      <Route path="/trajectory" element={
+        <ProtectedRoute allowedRoles={['investigator', 'admin', 'operator', 'command']}>
+          <TrajectoryView />
+        </ProtectedRoute>
+      } />
+      <Route path="/investigator/trajectory" element={
+        <ProtectedRoute allowedRoles={['investigator', 'admin']}>
+          <TrajectoryView />
+        </ProtectedRoute>
+      } />
       <Route path="/investigator/trajectory/:entityType/:entityId" element={
         <ProtectedRoute allowedRoles={['investigator', 'admin']}>
           <TrajectoryView />
@@ -45,6 +56,12 @@ function AppRoutes() {
           <CommandDashboard />
         </ProtectedRoute>
       } />
+      <Route path="/anpr-test" element={
+        <AppShell>
+          <AnprTestLab />
+        </AppShell>
+      } />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

@@ -4,17 +4,31 @@ import { useAuth } from '../hooks/useAuth';
 import { ShieldAlert } from 'lucide-react';
 
 export default function Login() {
-  const [role, setRole] = useState('operator');
-  const { login } = useAuth();
+  const [role, setRole] = useState('admin');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { login, error } = useAuth();
   const navigate = useNavigate();
+
+  const ROLE_MAP = {
+    operator: { username: 'GJ-OPR-001', password: 'demo123', route: '/operator' },
+    investigator: { username: 'GJ-INV-001', password: 'demo123', route: '/investigator' },
+    command: { username: 'GJ-CMD-001', password: 'demo123', route: '/command' },
+    admin: { username: 'GJ-ADM-001', password: 'demo123', route: '/command' },
+    anpr: { username: 'GJ-ADM-001', password: 'demo123', route: '/anpr-test' },
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    await login('demo_user', 'password', role);
-    if (role === 'operator') navigate('/operator');
-    else if (role === 'investigator') navigate('/investigator');
-    else if (role === 'command') navigate('/command');
-    else navigate('/operator');
+    setIsSubmitting(true);
+    const target = ROLE_MAP[role] || ROLE_MAP.admin;
+    try {
+      await login(target.username, target.password);
+      navigate(target.route);
+    } catch (err) {
+      console.error('Login failed', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -37,13 +51,20 @@ export default function Login() {
               <option value="investigator">Investigator Workspace</option>
               <option value="command">Command Dashboard</option>
               <option value="admin">Administrator</option>
+              <option value="anpr">ANPR Test Lab (Isolated)</option>
             </select>
           </div>
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md">
+              {error}
+            </div>
+          )}
           <button
             type="submit"
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-police-blue hover:bg-police-light focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-police-blue"
+            disabled={isSubmitting}
+            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-police-blue hover:bg-police-light focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-police-blue disabled:opacity-50"
           >
-            Sign In
+            {isSubmitting ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
       </div>

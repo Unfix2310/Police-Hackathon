@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class VideoPipeline:
     def __init__(self):
         self.detector = ObjectDetector(conf_threshold=0.5)
-        self.tracker = ObjectTracker(iou_threshold=0.3, track_buffer=30)
+        self.tracker = ObjectTracker(iou_threshold=0.3, track_buffer_ms=1500.0)
         self.anpr = ANPREngine(conf_threshold=0.6)
         
         self.veh_attr = VehicleAttributeExtractor()
@@ -32,7 +32,7 @@ class VideoPipeline:
         x2, y2 = min(w, x2), min(h, y2)
         return frame[y1:y2, x1:x2]
 
-    def process_frame(self, frame: np.ndarray, camera_id: str, timestamp: datetime, frame_id: int) -> List[Dict[str, Any]]:
+    def process_frame(self, frame: np.ndarray, camera_id: str, timestamp: datetime, frame_id: int, pts_ms: float, location_lat: float = 23.0225, location_lng: float = 72.5714) -> List[Dict[str, Any]]:
         observations = []
         
         if frame is None or frame.size == 0:
@@ -40,7 +40,7 @@ class VideoPipeline:
             
         try:
             detections = self.detector.detect(frame)
-            tracked_objects = self.tracker.update(detections, frame_id)
+            tracked_objects = self.tracker.update(detections, pts_ms)
             
             det_map = {}
             for d in detections:
@@ -59,9 +59,15 @@ class VideoPipeline:
                 if obs_type == "VEHICLE":
                     attributes = self.veh_attr.extract(crop, obj.class_id)
                     plate_res = self.anpr.detect_plate(crop)
-                    if plate_res:
+                    if plate_res and plate_res.status == "READABLE" and plate_res.plate_text not in ("UNREADABLE", "NO_PLATE", "UNREADABLE_LOW_RES"):
                         attributes["plate"] = plate_res.plate_text
                         attributes["plate_confidence"] = plate_res.plate_confidence
+                        attributes["plate_status"] = "READABLE"
+                        attributes["plate_bbox"] = plate_res.plate_bbox
+                    else:
+                        attributes["plate"] = "UNREADABLE"
+                        attributes["plate_confidence"] = plate_res.plate_confidence if plate_res else 0.0
+                        attributes["plate_status"] = "UNREADABLE"
                         
                 elif obs_type == "PERSON":
                     attributes = self.per_attr.extract(crop)
@@ -76,7 +82,9 @@ class VideoPipeline:
                     track_id=obj.track_id,
                     bbox=obj.bbox,
                     confidence=conf,
-                    attributes=attributes
+                    attributes=attributes,
+                    location_lat=location_lat,
+                    location_lng=location_lng,
                 )
                 
                 observations.append(obs)
@@ -104,9 +112,10 @@ class VideoPipeline:
             if not ret:
                 break
                 
+            pts_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
             if frame_id % frame_interval == 0:
                 timestamp = datetime.now(timezone.utc) 
-                obs = self.process_frame(frame, camera_id, timestamp, frame_id)
+                obs = self.process_frame(frame, camera_id, timestamp, frame_id, pts_ms)
                 all_obs.extend(obs)
                 
             frame_id += 1

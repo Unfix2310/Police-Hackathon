@@ -20,6 +20,8 @@ class User(Base):
     district: Mapped[str] = mapped_column(String(100))
     police_station: Mapped[str] = mapped_column(String(100))
     jurisdiction_code: Mapped[str] = mapped_column(String(50))
+    password_hash: Mapped[Optional[str]] = mapped_column(String(200))
+    role: Mapped[str] = mapped_column(String(50), default="operator")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     
