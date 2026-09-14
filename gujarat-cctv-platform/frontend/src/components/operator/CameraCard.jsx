@@ -1,14 +1,26 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Video, ExternalLink, Copy, Check } from 'lucide-react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Video, ExternalLink, Copy, Check, Loader2 } from 'lucide-react';
 import Hls from 'hls.js';
 
-export default function CameraCard({ camera }) {
+export default function CameraCard({ camera, loadDelay = 0 }) {
   const videoRef = useRef(null);
   const cardRef = useRef(null);
+  const hlsRef = useRef(null);
+  const retryCountRef = useRef(0);
+  const maxRetries = 2;
   const [copied, setCopied] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isFocused, setIsFocused] = useState(false);
+  const [ready, setReady] = useState(loadDelay === 0);
   const streamUrl = camera.hls_url || camera.web_url;
+
+  // Staggered mount: wait for loadDelay before activating HLS
+  useEffect(() => {
+    if (loadDelay <= 0) { setReady(true); return; }
+    const t = setTimeout(() => setReady(true), loadDelay);
+    return () => clearTimeout(t);
+  }, [loadDelay]);
 
   useEffect(() => {
     const handleFocusCamera = (e) => {
@@ -25,37 +37,71 @@ export default function CameraCard({ camera }) {
   }, [camera.cam_id]);
 
   useEffect(() => {
+    if (!ready) return;
     let hlsInstance = null;
     const video = videoRef.current;
     if (!video || !streamUrl) return;
 
     setHasError(false);
+    setIsLoading(true);
 
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari native HLS
       video.src = streamUrl;
+      video.addEventListener('loadeddata', () => setIsLoading(false), { once: true });
       video.play().catch(() => {});
     } else if (Hls && Hls.isSupported()) {
       hlsInstance = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
         backBufferLength: 30,
+        manifestLoadingTimeOut: 8000,
+        manifestLoadingMaxRetry: 1,
+        levelLoadingTimeOut: 8000,
+        fragLoadingTimeOut: 10000,
       });
+      hlsRef.current = hlsInstance;
       hlsInstance.loadSource(streamUrl);
       hlsInstance.attachMedia(video);
+
       hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
         video.play().catch(() => {});
       });
-      hlsInstance.on(Hls.Events.ERROR, () => {
-        // Non-fatal or CDN session limitation
+
+      hlsInstance.on(Hls.Events.FRAG_LOADED, () => {
+        setIsLoading(false);
+      });
+
+      hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) {
+          // Fatal error — try recovery once, then show error state
+          if (retryCountRef.current < maxRetries) {
+            retryCountRef.current += 1;
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              hlsInstance.startLoad();
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              hlsInstance.recoverMediaError();
+            } else {
+              setHasError(true);
+              setIsLoading(false);
+            }
+          } else {
+            hlsInstance.destroy();
+            setHasError(true);
+            setIsLoading(false);
+          }
+        }
       });
     }
 
     return () => {
+      retryCountRef.current = 0;
       if (hlsInstance) {
         hlsInstance.destroy();
+        hlsRef.current = null;
       }
     };
-  }, [streamUrl]);
+  }, [streamUrl, ready]);
 
   const copyCamId = () => {
     const textToCopy = camera.cam_id || streamUrl || '';
@@ -76,14 +122,21 @@ export default function CameraCard({ camera }) {
     >
       <div className="flex-1 w-full h-full bg-black relative flex items-center justify-center">
         {streamUrl && !hasError ? (
-          <video
-            ref={videoRef}
-            className="w-full h-full object-cover"
-            playsInline
-            muted
-            autoPlay
-            onError={() => setHasError(true)}
-          />
+          <>
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              playsInline
+              muted
+              autoPlay
+              onError={() => { setHasError(true); setIsLoading(false); }}
+            />
+            {isLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex flex-col items-center text-slate-500 gap-1 text-xs">
             <Video className="w-8 h-8 opacity-40" />

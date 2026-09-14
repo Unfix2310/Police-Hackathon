@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 
 class VideoPipeline:
     def __init__(self):
-        self.detector = ObjectDetector(conf_threshold=0.5)
+        self.detector = ObjectDetector(conf_threshold=0.15)
         self.tracker = ObjectTracker(iou_threshold=0.3, track_buffer_ms=1500.0)
-        self.anpr = ANPREngine(conf_threshold=0.6)
+        self.anpr = ANPREngine(conf_threshold=0.40)
         
         self.veh_attr = VehicleAttributeExtractor()
         self.per_attr = PersonAttributeExtractor()
@@ -113,6 +113,7 @@ class VideoPipeline:
                 break
                 
             pts_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+            
             if frame_id % frame_interval == 0:
                 timestamp = datetime.now(timezone.utc) 
                 obs = self.process_frame(frame, camera_id, timestamp, frame_id, pts_ms)
@@ -122,3 +123,4 @@ class VideoPipeline:
             
         cap.release()
         return all_obs
+

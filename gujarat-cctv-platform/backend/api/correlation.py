@@ -10,6 +10,7 @@ from models.entity import Vehicle, Person, VehicleObservation, PersonObservation
 from models.observation import Observation
 from models.camera import Camera
 from simulator.camera_registry import get_camera
+from config import settings
 import math
 
 router = APIRouter(tags=["Correlation"])
@@ -85,8 +86,8 @@ async def get_trajectory_feasibility(
                 speed_kmh = dist_km / time_diff_hours
                 point["speed_from_previous"] = speed_kmh
                 
-                if speed_kmh > 120:
-                    feasibility_score *= max(0.1, 120 / speed_kmh)
+                if speed_kmh > settings.STATUTORY_HIGHWAY_SPEED_LIMIT_KMH:
+                    feasibility_score *= max(0.1, settings.STATUTORY_HIGHWAY_SPEED_LIMIT_KMH / speed_kmh)
                     anomalies.append({
                         "type": "speed_anomaly",
                         "between": [prev_point["camera_id"], point["camera_id"]],

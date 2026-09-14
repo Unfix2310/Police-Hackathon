@@ -44,25 +44,29 @@ async def _get_sentinel_client() -> httpx.AsyncClient:
             }
             client = httpx.AsyncClient(
                 headers=headers,
-                follow_redirects=False,
-                timeout=15.0,
+                follow_redirects=True,
+                timeout=10.0,
                 limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
             )
-            await _login_sentinel(client)
+            if settings.SENTINEL_PASSWORD:
+                await _login_sentinel(client)
             _sentinel_client = client
         return _sentinel_client
 
 def _serialize_cam(c: Camera) -> dict:
     stream_path = f"/api/v1/cameras/{c.cam_id}/stream/index.m3u8"
-    loc = getattr(c, "location", None) or c.police_station or c.display_name
-    lat = getattr(c, "latitude", None) or 23.0225
-    lng = getattr(c, "longitude", None) or 72.5714
+    catalogue = {cam["cam_id"]: cam for cam in get_all_cameras()}
+    fallback = catalogue.get(c.cam_id, {})
+    loc = getattr(c, "location", None) or fallback.get("location") or c.police_station or c.display_name
+    lat = getattr(c, "latitude", None) or fallback.get("latitude") or 23.0225
+    lng = getattr(c, "longitude", None) or fallback.get("longitude") or 72.5714
+    district = c.district or fallback.get("district") or "Ahmedabad"
     return {
         "cam_id": c.cam_id,
         "display_name": c.display_name,
         "location": loc,
-        "location_type": c.location_type or "Junction",
-        "district": c.district or "Ahmedabad",
+        "location_type": c.location_type or fallback.get("location_type", "Junction"),
+        "district": district,
         "police_station": c.police_station or loc or "Unknown",
         "latitude": lat,
         "longitude": lng,
@@ -82,64 +86,80 @@ async def list_cameras(
     limit: int = 50,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_role(["operator", "investigator", "command", "sysadmin"]))
+    user: dict = Depends(require_role(["operator", "investigator", "command", "sysadmin", "admin"]))
 ):
     """List cameras in the system."""
-    query = select(Camera)
-    if district:
-        query = query.where(Camera.district == district)
-    
-    total_query = select(func.count(Camera.cam_id))
-    total_res = await db.execute(total_query)
-    total = total_res.scalar() or 0
-    
-    res = await db.execute(query.offset(offset).limit(limit))
-    cams = res.scalars().all()
-    
-    # Fallback to local registry if DB is empty
-    if not cams:
-        reg_cams = get_all_cameras()
-        return {"cameras": reg_cams[offset:offset + limit], "total": len(reg_cams)}
+    try:
+        query = select(Camera)
+        if district:
+            query = query.where(Camera.district == district)
         
-    return {"cameras": [_serialize_cam(c) for c in cams], "total": total}
+        total_query = select(func.count(Camera.cam_id))
+        total_res = await db.execute(total_query)
+        total = total_res.scalar() or 0
+        
+        res = await db.execute(query.offset(offset).limit(limit))
+        cams = res.scalars().all()
+        
+        if cams:
+            return {"cameras": [_serialize_cam(c) for c in cams], "total": total}
+    except Exception as e:
+        logger.warning(f"Database query failed for list_cameras ({e}); falling back to local registry.")
+
+    # Fallback to local registry if DB is empty or query fails
+    reg_cams = get_all_cameras()
+    if district:
+        reg_cams = [c for c in reg_cams if (c.get("district") or "").lower() == district.lower()]
+    return {"cameras": reg_cams[offset:offset + limit], "total": len(reg_cams)}
 
 @router.get("/health/summary")
 async def camera_health_summary(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_role(["command", "sysadmin"]))
+    user: dict = Depends(require_role(["command", "sysadmin", "admin"]))
 ):
     """Get aggregate health statistics."""
-    res = await db.execute(select(Camera))
-    cams = res.scalars().all()
-    if not cams:
-        total = len(get_all_cameras())
-        return {"total": total, "online": total, "offline": 0, "degraded": 0, "by_district": {}}
-        
-    online = sum(1 for c in cams if getattr(c.status, "value", str(c.status)).upper() in ("ONLINE", "ACTIVE"))
+    try:
+        res = await db.execute(select(Camera))
+        cams = res.scalars().all()
+        if cams:
+            online = sum(1 for c in cams if getattr(c.status, "value", str(c.status)).upper() in ("ONLINE", "ACTIVE"))
+            by_district = {}
+            for c in cams:
+                dist = c.district or "Unknown"
+                by_district[dist] = by_district.get(dist, 0) + 1
+                
+            return {
+                "total": len(cams),
+                "online": online,
+                "offline": len(cams) - online,
+                "degraded": 0,
+                "by_district": by_district
+            }
+    except Exception as e:
+        logger.warning(f"Database query failed for camera_health_summary ({e}); falling back to local registry.")
+
+    reg_cams = get_all_cameras()
+    total = len(reg_cams)
     by_district = {}
-    for c in cams:
-        dist = c.district or "Unknown"
+    for c in reg_cams:
+        dist = c.get("district") or "Ahmedabad"
         by_district[dist] = by_district.get(dist, 0) + 1
-        
-    return {
-        "total": len(cams),
-        "online": online,
-        "offline": len(cams) - online,
-        "degraded": 0,
-        "by_district": by_district
-    }
+    return {"total": total, "online": total, "offline": 0, "degraded": 0, "by_district": by_district}
 
 @router.get("/{cam_id}")
 async def get_camera(
     cam_id: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_role(["operator", "investigator", "command", "sysadmin"]))
+    user: dict = Depends(require_role(["operator", "investigator", "command", "sysadmin", "admin"]))
 ):
     """Get details for a specific camera."""
-    res = await db.execute(select(Camera).where(Camera.cam_id == cam_id))
-    cam = res.scalar_one_or_none()
-    if cam:
-        return _serialize_cam(cam)
+    try:
+        res = await db.execute(select(Camera).where(Camera.cam_id == cam_id))
+        cam = res.scalar_one_or_none()
+        if cam:
+            return _serialize_cam(cam)
+    except Exception as e:
+        logger.warning(f"Database query failed for get_camera {cam_id} ({e}); checking local registry.")
     
     # Fallback registry lookup
     for c in get_all_cameras():
@@ -152,7 +172,7 @@ async def get_camera(
 async def get_camera_health(
     cam_id: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_role(["operator", "command", "sysadmin"]))
+    user: dict = Depends(require_role(["operator", "command", "sysadmin", "admin"]))
 ):
     """Get health telemetry for a specific camera."""
     return {"cam_id": cam_id, "status": "ONLINE", "stream_latency_ms": 120, "fps": 25, "packet_loss_pct": 0.0}
@@ -170,9 +190,13 @@ async def get_camera_stream_playlist(cam_id: str):
     
     try:
         resp = await client.get(url)
-        if resp.status_code in (302, 401, 403):
-            await _login_sentinel(client)
-            resp = await client.get(url)
+        if resp.status_code in (401, 403):
+            if not settings.SENTINEL_PASSWORD:
+                raise HTTPException(status_code=503, detail="Sentinel CDN credentials not configured. Set SENTINEL_PASSWORD in .env")
+            # Re-login and retry once
+            logged_in = await _login_sentinel(client)
+            if logged_in:
+                resp = await client.get(url)
             
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail="Stream playlist unavailable from Sentinel CDN")
@@ -220,9 +244,12 @@ async def get_camera_stream_asset(cam_id: str, file_name: str):
         
     try:
         resp = await client.get(target_url)
-        if resp.status_code in (302, 401, 403):
-            await _login_sentinel(client)
-            resp = await client.get(target_url)
+        if resp.status_code in (401, 403):
+            if not settings.SENTINEL_PASSWORD:
+                raise HTTPException(status_code=503, detail="Sentinel CDN credentials not configured")
+            logged_in = await _login_sentinel(client)
+            if logged_in:
+                resp = await client.get(target_url)
             
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail=f"Asset {file_name} unavailable")

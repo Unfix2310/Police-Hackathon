@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AlertTriangle, Search } from 'lucide-react';
 import DataTable from '../components/shared/DataTable';
 import api from '../services/api';
 
@@ -12,32 +13,65 @@ export default function SearchView() {
   const handleSearch = async () => {
     setLoading(true);
     try {
-      // Send the search query to the backend API we just built
       const response = await api.post('/search', { description: query });
       setResults(response.data.results || []);
     } catch (error) {
       console.error('Search failed:', error);
-      alert('Search failed. Is the backend running?');
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    handleSearch();
+  }, []);
+
+  const renderPlateBadge = (plate, type) => {
+    if (type !== 'VEHICLE') {
+      return <span className="text-gray-400 text-xs italic">N/A (Person)</span>;
+    }
+    if (!plate || plate === 'UNKNOWN' || plate === 'NO_PLATE') {
+      return <span className="text-gray-400 text-xs italic">No Plate</span>;
+    }
+    if (plate === 'UNREADABLE' || plate === 'UNREADABLE_LOW_RES') {
+      return (
+        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-xs font-medium">
+          <AlertTriangle className="w-3 h-3 text-amber-600" />
+          Unreadable
+        </span>
+      );
+    }
+    return (
+      <div className="inline-flex items-center rounded border border-gray-400 bg-white shadow-xs overflow-hidden text-xs font-mono font-bold tracking-wider">
+        <span className="bg-blue-700 text-white px-1.5 py-0.5 text-[9px] font-sans font-bold flex items-center">
+          IND
+        </span>
+        <span className="px-2 py-0.5 text-gray-900 bg-white">
+          {plate}
+        </span>
+      </div>
+    );
   };
 
   return (
     <div className="bg-white p-6 rounded-lg shadow h-full">
       <h2 className="text-2xl font-bold text-police-blue mb-6">Advanced Semantic Search</h2>
       <div className="grid grid-cols-4 gap-4 mb-8">
-        <input 
-          type="text" 
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Description (e.g. Red car)" 
-          className="border p-2 rounded col-span-2" 
-        />
+        <div className="col-span-2 relative">
+          <input 
+            type="text" 
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            placeholder="Search by plate (e.g. GJ01AB1234), vehicle (e.g. Red car), or attribute..." 
+            className="border p-2 pl-9 rounded w-full" 
+          />
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+        </div>
         <input type="datetime-local" className="border p-2 rounded" />
         <button 
           onClick={handleSearch}
-          className="bg-police-blue text-white p-2 rounded hover:bg-blue-800 disabled:opacity-50"
+          className="bg-police-blue text-white p-2 rounded hover:bg-blue-800 disabled:opacity-50 font-medium"
           disabled={loading}
         >
           {loading ? 'Searching...' : 'Search'}
@@ -87,8 +121,8 @@ export default function SearchView() {
                     </span>
                   </td>
                   <td className="p-3 font-medium text-gray-800">{r.description}</td>
-                  <td className="p-3 font-mono text-xs text-gray-600">
-                    <span className="bg-gray-100 px-2 py-1 rounded border border-gray-200">{r.plate}</span>
+                  <td className="p-3">
+                    {renderPlateBadge(r.plate, r.type)}
                   </td>
                   <td className="p-3">
                     <div className="flex items-center space-x-2">

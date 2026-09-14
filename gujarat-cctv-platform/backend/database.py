@@ -22,7 +22,17 @@ if is_postgres:
         logger.warning("asyncpg not installed; ALLOW_SQLITE_FALLBACK is enabled, falling back to SQLite.")
         db_url = "sqlite+aiosqlite:///./cctv_platform.db"
 
-engine = create_async_engine(db_url, echo=(settings.LOG_LEVEL == "DEBUG"))
+from sqlalchemy.pool import StaticPool
+
+connect_args = {"check_same_thread": False} if "sqlite" in db_url else {}
+poolclass = StaticPool if ":memory:" in db_url else None
+
+engine = create_async_engine(
+    db_url,
+    echo=(settings.LOG_LEVEL == "DEBUG"),
+    connect_args=connect_args,
+    poolclass=poolclass,
+)
 
 async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 

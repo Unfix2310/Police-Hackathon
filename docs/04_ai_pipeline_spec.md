@@ -12,16 +12,16 @@ This document specifies the AI pipeline architecture, model specifications, and 
 
 ```mermaid
 flowchart TD
-    A[Video File / Stream] --> B[Frame Extraction]
-    B --> C[Detection (YOLOv8)]
-    C --> D[Tracking (ByteTrack)]
+    A[Video File / RTSP Stream] --> B[Frame Extraction]
+    B --> C[Detection (YOLOv8m)]
+    C --> D[Tracking (Kalman ByteTrack)]
     
     D --> E{Detection Type}
     
-    E -->|Vehicle| F[ANPR (PaddleOCR)]
-    E -->|Vehicle| G[Vehicle Attribute Extraction]
-    E -->|Person| H[Person ReID Feature Extraction]
-    E -->|Person| I[Person Attribute Extraction]
+    E -->|Vehicle| F[ANPR (Multi-pass Tesseract OCR)]
+    E -->|Vehicle| G[Vehicle Attribute Extraction (HSV Color + Geometry)]
+    E -->|Person| H[Person Soft-Biometrics (HSV Apparel Profiling)]
+    E -->|Person| I[Person Spatial Feasibility Analysis]
     
     F --> J[Observation Generator]
     G --> J
@@ -31,11 +31,11 @@ flowchart TD
     J --> K[Canonical Observation]
     K --> L[Entity Resolution Engine]
     L --> M[Watchlist Check]
-    M --> N[Event Publish / Redis PubSub]
+    M --> N[Event Publish / Redis PubSub / DB]
 ```
 
 **Text-Based Flow:**
-Video file → Frame extraction → Detection (YOLOv8) → Tracking (ByteTrack) → ANPR (PaddleOCR) + Attribute Extraction → Observation generation → Entity resolution → Watchlist check → Event publish.
+Video file / RTSP stream → Frame extraction → Detection (YOLOv8m) → Tracking (Kalman ByteTrack) → ANPR (Multi-pass Tesseract) + Attribute Extraction (HSV Color & Geometry) → Observation generation → Entity resolution (Corridor Matching + Plate Index) → Watchlist check → Event publish.
 
 ---
 
@@ -44,10 +44,11 @@ Video file → Frame extraction → Detection (YOLOv8) → Tracking (ByteTrack) 
 | Module | Model / Architecture | Configuration / Details |
 |--------|----------------------|-------------------------|
 | **Detection** | YOLOv8 (yolov8m) | COCO classes: `0` (person), `2` (car), `3` (motorcycle), `5` (bus), `7` (truck). Conf Threshold: `0.5` |
-| **Tracking** | ByteTrack | IoU Threshold: `0.3`, Track buffer: 30 frames |
-| **ANPR** | PaddleOCR | Optimized for English alphanumeric, configured for Indian plate formats (GJ XX YY ZZZZ) |
-| **Person ReID** | OSNet / ResNet50-BoT | Output vector dimensions: `2048`. Similarity metric: Cosine |
-| **Vehicle Attributes** | ResNet18 (Multi-task) | Color (white, black, red, blue, silver, etc.), Type (sedan, SUV, 2-wheeler, truck, auto) |
+| **Tracking** | ByteTrack (Kalman Filter) | Dual-threshold IoU association + Kalman motion model. High det thresh: `0.5`, Low det thresh: `0.1`, IoU thresh: `0.3`, Track buffer: 30 frames |
+| **ANPR** | Multi-Pass Tesseract OCR | Optimized multi-pass OCR: PSM 7 (single line) & PSM 6 (two-line stacked). Preprocessing: Grayscale, CLAHE, Bilateral filtering, Otsu adaptive thresholding. Syntax-based Indian HSRP/Bharat regex normalization & positional character correction. Conf Threshold: `0.6` |
+| **Person Soft-Biometrics** | HSV Apparel Color Profiling & Geometric Scale | Upper/lower torso color histogram analysis in HSV space; aspect ratio and scale estimation; cross-camera spatio-temporal corridor gating (max 20.0 km/h) |
+| **Vehicle Attributes** | HSV Color Space + Geometric Classification | Masked HSV histogram binning (White, Black, Red, Blue, Silver/Grey, Yellow/Auto, Green, Orange); class mapping from YOLOv8 (Sedan, SUV, Two-Wheeler, Auto-Rickshaw, Bus, Truck) |
+
 
 ---
 
@@ -114,68 +115,81 @@ class PipelineConfig(BaseModel):
 
 ---
 
-## 5. Entity Resolution Logic (Pseudocode)
+## 5. Entity Resolution Logic
+
+The platform implements multi-modal entity resolution combining deterministic plate lookups with soft-biometric spatial-temporal corridor matching:
 
 ```python
-def resolve_entity(observation: Observation) -> EntityMatch:
-    if observation.type == "VEHICLE":
-        if observation.plate_confidence > 0.8:
-            match = db.find_exact_plate(observation.plate_text)
-            if match:
-                return EntityMatch(entity_id=match.id, confidence=0.95, method="EXACT_PLATE")
-        
-        # Partial match + attributes fallback
-        candidates = db.find_partial_plate(observation.plate_text)
-        for cand in candidates:
-            if cand.color == observation.attributes['color'] and cand.type == observation.attributes['type']:
-                return EntityMatch(entity_id=cand.id, confidence=0.75, method="PARTIAL_ATTR")
-                
-        return create_new_vehicle_entity(observation)
+async def resolve_vehicle(observation: Observation, db: AsyncSession) -> Dict[str, Any]:
+    # 1. Exact plate match if plate is readable and confidence > 0.70
+    if observation.plate_text and observation.plate_confidence > 0.70:
+        match = await db.find_vehicle_by_plate(observation.plate_text)
+        if match:
+            return {"entity_id": match.vehicle_id, "confidence": 0.95, "method": "EXACT_PLATE"}
 
-    elif observation.type == "PERSON":
-        candidates = vector_db.search_knn(observation.features, top_k=5)
-        for cand in candidates:
-            if cand.similarity > CONFIG.reid_similarity_thresh:
-                # Validate with spatio-temporal feasibility
-                feasibility = check_spatio_temporal_feasibility(observation, cand.last_observation)
-                if feasibility.is_plausible:
-                    final_score = (cand.similarity * 0.7) + (feasibility.score * 0.3)
-                    return EntityMatch(entity_id=cand.id, confidence=final_score, method="REID_ST")
-                    
-        return create_new_person_entity(observation)
+    # 2. Soft-biometric corridor matching (Color + Class + Spatio-Temporal Feasibility)
+    candidates = await db.get_recent_vehicles(window_sec=600)
+    for cand, last_obs in candidates:
+        # Hard Physical Feasibility Gate
+        implied_speed = haversine(cand.cam, obs.cam) / elapsed_hours
+        if implied_speed > settings.PHYSICAL_MAX_VEHICLE_SPEED_KMH: # 150 km/h
+            continue # Physically impossible travel
+
+        score = (0.40 * class_similarity) + (0.35 * color_similarity) + (0.25 * temporal_proximity)
+        if score >= 0.70:
+            return {"entity_id": cand.vehicle_id, "confidence": score, "method": "SOFT_BIOMETRIC"}
+
+    return await create_new_vehicle(observation)
+
+async def resolve_person(observation: Observation, db: AsyncSession) -> Dict[str, Any]:
+    candidates = await db.get_recent_persons(window_sec=600)
+    for cand, last_obs in candidates:
+        # Hard Pedestrian Running Gate
+        implied_speed = haversine(cand.cam, obs.cam) / elapsed_hours
+        if implied_speed > settings.PHYSICAL_MAX_PEDESTRIAN_SPEED_KMH: # 20 km/h
+            continue # Physically impossible foot travel
+
+        score = (0.45 * clothing_color_similarity) + (0.30 * temporal_proximity) + (0.25 * spatial_score)
+        if score >= 0.60:
+            return {"entity_id": cand.person_id, "confidence": score, "method": "SOFT_BIOMETRIC"}
+
+    return await create_new_person(observation)
 ```
 
 ---
 
 ## 6. Spatio-Temporal Feasibility Algorithm
 
-Based on §19 of the architecture:
+Trajectories and cross-camera hops compute implied transit speeds using Haversine great-circle distance between calibrated camera GPS coordinates:
 
 ```python
-def check_spatio_temporal_feasibility(obs_a: Observation, obs_b: Observation) -> FeasibilityResult:
-    # 1. Calculate Time Difference (in hours)
-    time_diff_hr = abs(obs_b.timestamp - obs_a.timestamp) / 3600.0
-    
-    if time_diff_hr == 0:
-        return FeasibilityResult(is_plausible=False, score=0.0, reason="Simultaneous")
+def check_spatio_temporal_feasibility(cam_a: Camera, cam_b: Camera, t_a: datetime, t_b: datetime, entity_type: str = "vehicle") -> FeasibilityResult:
+    elapsed_hours = abs(t_b - t_a).total_seconds() / 3600.0
+    if elapsed_hours <= 0:
+        return FeasibilityResult(is_plausible=False, score=0.0, label="TELEPORTATION")
 
-    # 2. Lookup Road Distance (km)
-    # Uses pre-computed distance matrix or PostGIS lookup
-    distance_km = road_network_distance(obs_a.location, obs_b.location)
+    dist_km = haversine(cam_a.latitude, cam_a.longitude, cam_b.latitude, cam_b.longitude)
+    speed_kmh = dist_km / elapsed_hours
 
-    # 3. Calculate Required Speed
-    required_speed_kmh = distance_km / time_diff_hr
-
-    # 4. Determine Feasibility Context (Assuming City context for MVP)
-    if required_speed_kmh < 40:
-        return FeasibilityResult(is_plausible=True, score=1.0, label="PLAUSIBLE")
-    elif 40 <= required_speed_kmh <= 60:
-        return FeasibilityResult(is_plausible=True, score=0.8, label="POSSIBLE")
-    elif 60 < required_speed_kmh <= 80:
-        return FeasibilityResult(is_plausible=False, score=0.4, label="LOW_PLAUSIBILITY")
-    else:
-        return FeasibilityResult(is_plausible=False, score=0.0, label="IMPLAUSIBLE")
+    if entity_type == "vehicle":
+        if speed_kmh > settings.PHYSICAL_MAX_VEHICLE_SPEED_KMH: # 150 km/h
+            return FeasibilityResult(is_plausible=False, score=0.0, label="PHYSICALLY_IMPOSSIBLE")
+        elif speed_kmh > settings.STATUTORY_HIGHWAY_SPEED_LIMIT_KMH: # 120 km/h
+            score = max(0.1, settings.STATUTORY_HIGHWAY_SPEED_LIMIT_KMH / speed_kmh)
+            return FeasibilityResult(is_plausible=True, score=score, label="SPEED_ANOMALY")
+        else:
+            return FeasibilityResult(is_plausible=True, score=1.0, label="PLAUSIBLE")
+    else:  # person
+        if speed_kmh > settings.PHYSICAL_MAX_PEDESTRIAN_SPEED_KMH: # 20 km/h
+            return FeasibilityResult(is_plausible=False, score=0.0, label="PHYSICALLY_IMPOSSIBLE")
+        elif speed_kmh <= 6.0:  # Walking speed
+            score = max(0.2, 1.0 - (speed_kmh / 20.0))
+            return FeasibilityResult(is_plausible=True, score=score, label="PLAUSIBLE_WALKING")
+        else:  # Running / transit
+            score = max(0.1, 0.7 - (speed_kmh / 30.0))
+            return FeasibilityResult(is_plausible=True, score=score, label="PLAUSIBLE_RUNNING")
 ```
+
 
 ---
 

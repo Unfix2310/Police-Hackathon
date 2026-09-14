@@ -60,8 +60,8 @@ async def lifespan(app: FastAPI):
         async with async_session_maker() as session:
             result = await session.execute(select(Camera).limit(5))
             existing_cams = result.scalars().all()
-            # If empty or old IDs (e.g. not Sentinel cam01... format), seed fresh
-            needs_seed = len(existing_cams) == 0 or not any(c.cam_id.startswith("cam") for c in existing_cams)
+            # If empty, old IDs, or missing coordinates, seed fresh
+            needs_seed = len(existing_cams) == 0 or not any(c.cam_id.startswith("cam") for c in existing_cams) or any(c.latitude is None for c in existing_cams)
             
             if needs_seed:
                 logger.info("Seeding cameras from Sentinel catalogue...")
@@ -190,23 +190,29 @@ async def lifespan(app: FastAPI):
         from engine.stream_manager import get_stream_manager
         from simulator.camera_registry import fetch_sentinel_catalogue
         
-        manager = get_stream_manager()
-        cameras = await fetch_sentinel_catalogue()
-        
-        # Initialize inference workers for active cameras (scalable up to MAX_ACTIVE_STREAMS)
-        max_streams = getattr(settings, "MAX_ACTIVE_STREAMS", 30)
-        target_cameras = cameras[:max_streams] if max_streams > 0 else cameras
-        started_count = 0
-        for cam in target_cameras:
-            if "rtsp_url" in cam and cam["rtsp_url"]:
-                await manager.start_stream(
-                    camera_id=cam["cam_id"],
-                    rtsp_url=cam["rtsp_url"],
-                    target_fps=settings.FRAME_SAMPLE_RATE,  # 2 FPS
-                    fallback_url=cam.get("hls_url")
-                )
-                started_count += 1
-        logger.info(f"Started {started_count} Sentinel camera stream workers across {len(cameras)} registered cameras (RTSP over TCP with HLS fallback).")
+        if not settings.SENTINEL_PASSWORD:
+            logger.warning("SENTINEL_PASSWORD not configured — skipping RTSP stream workers. Set it in .env to enable live inference.")
+        else:
+            manager = get_stream_manager()
+            cameras = await fetch_sentinel_catalogue()
+            
+            # Initialize inference workers for active cameras (scalable up to MAX_ACTIVE_STREAMS)
+            max_streams = getattr(settings, "MAX_ACTIVE_STREAMS", 30)
+            target_cameras = cameras[:max_streams] if max_streams > 0 else cameras
+            started_count = 0
+            for cam in target_cameras:
+                if "rtsp_url" in cam and cam["rtsp_url"]:
+                    await manager.start_stream(
+                        camera_id=cam["cam_id"],
+                        rtsp_url=cam["rtsp_url"],
+                        target_fps=settings.FRAME_SAMPLE_RATE,  # 2 FPS
+                        fallback_url=cam.get("hls_url")
+                    )
+                    started_count += 1
+                    # Stagger worker starts to avoid flooding the thread pool
+                    if started_count % 5 == 0:
+                        await asyncio.sleep(0.5)
+            logger.info(f"Started {started_count} Sentinel camera stream workers across {len(cameras)} registered cameras (RTSP over TCP with HLS fallback).")
     except Exception as e:
         logger.error(f"Failed to start stream manager: {e}", exc_info=True)
 

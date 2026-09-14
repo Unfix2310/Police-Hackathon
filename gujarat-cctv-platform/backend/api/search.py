@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,11 +72,13 @@ async def unified_search(
     # Filter if user provided a search query
     if description:
         search_terms = [t for t in description.lower().split() if t]
+        clean_query = re.sub(r"[^a-z0-9]", "", description.lower())
         filtered = []
         for r in formatted_results:
             desc_val = (r["description"] or "").lower()
             plate_val = (r["plate"] or "").lower()
             type_val = (r["type"] or "").lower()
+            clean_plate = re.sub(r"[^a-z0-9]", "", plate_val)
             
             searchable_text = f"{desc_val} {plate_val} {type_val}"
             
@@ -89,6 +92,13 @@ async def unified_search(
                 
             # Score based on how many search terms match the searchable text
             score = sum(1 for term in search_terms if term in searchable_text)
+
+            # Direct or partial plate match boost (e.g. searching 'GJ-01-AB-1234' matches 'GJ01AB1234')
+            if clean_query and clean_plate and clean_plate not in ("unreadable", "unknown"):
+                if clean_query == clean_plate:
+                    score += 5
+                elif clean_query in clean_plate or (len(clean_query) >= 4 and clean_plate in clean_query):
+                    score += 3
             
             if score > 0:
                 r["_score"] = score

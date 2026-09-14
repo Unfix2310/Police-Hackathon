@@ -12,7 +12,7 @@ router = APIRouter(prefix="/alerts", tags=["Alerts"])
 @router.get("")
 async def list_alerts(
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(require_role(["operator", "command"]))
+    user: dict = Depends(require_role(["operator", "command", "sysadmin", "admin"]))
 ):
     """List active unacknowledged alerts."""
     query = (
@@ -41,7 +41,7 @@ async def acknowledge_alert(
     alert_id: str,
     payload: dict,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(require_role(["operator", "investigator", "command"]))
+    user: dict = Depends(require_role(["operator", "investigator", "command", "sysadmin", "admin"]))
 ):
     """Acknowledge an alert — persists status, actor, timestamp, and comments."""
     from datetime import datetime, timezone

@@ -39,7 +39,7 @@ CLASS_NAMES = {
 def _get_detector() -> ObjectDetector:
     global _detector
     if _detector is None:
-        _detector = ObjectDetector(conf_threshold=0.40)
+        _detector = ObjectDetector(model_name="yolov8s.pt", conf_threshold=0.40)
     return _detector
 
 def _get_anpr() -> ANPREngine:
@@ -67,11 +67,19 @@ def _format_time(seconds: float) -> str:
 async def anpr_status():
     """Reports status of the baseline ANPR engine."""
     engine = _get_anpr()
+    detector = _get_detector()
+    device_label = (
+        "Apple Silicon GPU (MPS)" if detector.device == "mps"
+        else ("NVIDIA GPU (CUDA)" if detector.device == "cuda"
+        else "CPU (Docker VM / Fallback)")
+    )
     return {
         "status": "ready" if engine.available else "degraded",
         "engine": "Tesseract Baseline",
         "tesseract_cmd": engine.tesseract_cmd,
         "available": engine.available,
+        "device": detector.device,
+        "device_name": device_label,
         "isolated_mode": True,
         "note": "Baseline testing engine for benchmarking real-world footage."
     }
@@ -184,9 +192,16 @@ async def test_video(
             sample_indices.append(cur_idx)
             cur_idx += step
 
+        cur_frame_num = 0
         for processed_count, frame_idx in enumerate(sample_indices):
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            # Advance to target frame using lightweight grab() (skips pixel decoding)
+            while cur_frame_num < frame_idx:
+                if not cap.grab():
+                    break
+                cur_frame_num += 1
+
             ret, frame = cap.read()
+            cur_frame_num += 1
             if not ret or frame is None:
                 continue
 
@@ -196,9 +211,9 @@ async def test_video(
             detections = detector.detect(frame)
             veh_detections = [d for d in detections if d.class_id in CLASS_NAMES]
 
-            # Prioritize largest vehicles in frame (closest to camera, max 6 per frame)
+            # Prioritize largest vehicles in frame (closest to camera, max 4 per frame)
             veh_detections.sort(key=lambda d: (d.bbox[2]-d.bbox[0]) * (d.bbox[3]-d.bbox[1]), reverse=True)
-            candidate_vehicles = veh_detections[:6]
+            candidate_vehicles = veh_detections[:4]
 
             frame_veh_results = []
             for d in candidate_vehicles:
@@ -233,6 +248,8 @@ async def test_video(
                     "status": plate_res.status,
                     "raw_text": plate_res.raw_text,
                     "plate_crop_base64": plate_b64,
+                    "timestamp_sec": round(pts_sec, 2),
+                    "timestamp_formatted": _format_time(pts_sec),
                 })
 
             # Also generate a lightweight frame thumbnail for quick inspection

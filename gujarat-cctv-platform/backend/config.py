@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     REID_SIMILARITY_THRESHOLD: float = 0.75
     MAX_ACTIVE_STREAMS: int = 30
 
+    # Speed Limits & Feasibility Gates (km/h)
+    STATUTORY_HIGHWAY_SPEED_LIMIT_KMH: float = 120.0  # Gujarat statutory highway limit; triggers speed anomaly
+    PHYSICAL_MAX_VEHICLE_SPEED_KMH: float = 150.0      # Hard physical impossibility gate for vehicles; rejects association
+    PHYSICAL_MAX_PEDESTRIAN_SPEED_KMH: float = 20.0    # Hard physical impossibility gate for pedestrians (sprint limit); rejects association
+
     # Paths
     RECORDINGS_PATH: str = "./data/recordings"
     MODELS_PATH: str = "./data/models"

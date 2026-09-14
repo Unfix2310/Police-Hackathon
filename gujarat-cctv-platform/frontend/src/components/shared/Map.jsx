@@ -20,8 +20,10 @@ function MapController({ viewTarget }) {
 }
 
 export default function Map({ cameras: propCameras, onSelectCamera }) {
-  const [cameras, setCameras] = useState(propCameras || []);
-  const [loading, setLoading] = useState(!propCameras || propCameras.length === 0);
+  const [cameras, setCameras] = useState(
+    propCameras && propCameras.length > 0 ? propCameras : SENTINEL_FALLBACK_CAMS
+  );
+  const [loading, setLoading] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState('ALL');
   const [viewTarget, setViewTarget] = useState({ center: [23.045, 72.565], zoom: 12 });
   const { alerts } = useAlerts ? useAlerts() : { alerts: [] };
@@ -29,23 +31,17 @@ export default function Map({ cameras: propCameras, onSelectCamera }) {
   useEffect(() => {
     if (propCameras && propCameras.length > 0) {
       setCameras(propCameras);
-      setLoading(false);
       return;
     }
 
     const loadCams = async () => {
-      setLoading(true);
       try {
         const res = await api.get('/cameras?limit=100');
         if (res.data?.cameras && res.data.cameras.length > 0) {
           setCameras(res.data.cameras);
-        } else {
-          setCameras(SENTINEL_FALLBACK_CAMS);
         }
-      } catch {
-        setCameras(SENTINEL_FALLBACK_CAMS);
-      } finally {
-        setLoading(false);
+      } catch (err) {
+        console.warn('Map: Could not load cameras from API; using Sentinel catalogue fallback:', err);
       }
     };
     loadCams();

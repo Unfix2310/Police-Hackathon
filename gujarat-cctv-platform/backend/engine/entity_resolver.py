@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.entity import Vehicle, Person, VehicleObservation, PersonObservation
 from models.observation import Observation
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +196,7 @@ class EntityResolver:
                                 elapsed_hrs = _diff_seconds(veh_obs.timestamp_capture, timestamp) / 3600.0
                                 if elapsed_hrs > 0:
                                     implied_speed = dist_km / elapsed_hrs
-                                    if implied_speed > 150:  # km/h max plausible speed
+                                    if implied_speed > settings.PHYSICAL_MAX_VEHICLE_SPEED_KMH:  # km/h max plausible speed
                                         continue  # Skip: physically impossible travel
                 except Exception:
                     pass  # If lookup fails, proceed with matching
@@ -306,13 +307,13 @@ class EntityResolver:
                             elapsed_hrs = _diff_seconds(p_obs.timestamp_capture, timestamp) / 3600.0
                             if elapsed_hrs > 0:
                                 implied_speed = dist_km / elapsed_hrs
-                                # Max plausible speed for pedestrian/corridor movement (walking or transit)
-                                if implied_speed > 80.0:
+                                # Max plausible speed for pedestrian corridor movement (running/sprint limit)
+                                if implied_speed > settings.PHYSICAL_MAX_PEDESTRIAN_SPEED_KMH:
                                     continue  # Skip: physically impossible transit
-                                if implied_speed <= 15.0:
+                                if implied_speed <= 6.0:
                                     spatial_score = max(0.2, 1.0 - (implied_speed / 20.0))
                                 else:
-                                    spatial_score = max(0.1, 0.7 - (implied_speed / 120.0))
+                                    spatial_score = max(0.1, 0.7 - (implied_speed / 30.0))
                             else:
                                 if dist_km > 0.05:
                                     continue

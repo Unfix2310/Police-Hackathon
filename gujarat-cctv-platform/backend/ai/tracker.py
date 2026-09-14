@@ -216,6 +216,11 @@ class ObjectTracker:
             self.tracks[track_id]["bbox"] = det.bbox
             self.tracks[track_id]["pts_ms"] = pts_ms
 
+        # Update coasting (unmatched) tracks to their Kalman-predicted position
+        for track_id in unmatched_tracks_2:
+            if track_id in self.tracks:
+                self.tracks[track_id]["bbox"] = self.tracks[track_id]["predicted_box"]
+
         # Stage 3: Initialize new tracks from unmatched high-confidence detections
         for det in unmatched_dets_high:
             track_id = self.next_id
@@ -233,8 +238,8 @@ class ObjectTracker:
         # Format tracked objects for caller
         tracked_objects = []
         for track_id, track_data in self.tracks.items():
-            # Include tracks that were updated recently (within 500ms)
-            if pts_ms - track_data["pts_ms"] <= 500.0:
+            # Include tracks that were updated recently (within track buffer window)
+            if pts_ms - track_data["pts_ms"] <= self.track_buffer_ms:
                 tracked_objects.append(
                     TrackedObject(
                         track_id=track_id,
